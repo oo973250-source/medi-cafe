@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Based on the screenshot, here is the description of the expanded state:\n\n1.  **Expanded Button:** The **\"Breakfast\"** button is the one that is expanded. It is visually distinct because it has a **dark brown/gold background** (unlike the white background of the others) and is slightly taller to accommodate the full text \"Breakfast\". Inside this button, there is a small icon of toast/eggs and the text **\"Break... Tap again\"**, indicating it is currently selected or active.\n2.  **Hint Text:** Yes, the hint **\"Tap again\"** is visible directly underneath the truncated \"Break...\" text within that specific button.\n3.  **Other Buttons:** Yes, the other category buttons (**Lunch**, **Dinner**, and **Snacks**) remain in their normal compact state with a plain white background and simple black text.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1785965376,
+  "id": "202608060529344d68ecc42b5b4a4f",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "202608060529344d68ecc42b5b4a4f",
+  "usage": {
+    "completion_tokens": 182,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 386,
+    "prompt_tokens_details": {
+      "cached_tokens": 2
+    },
+    "total_tokens": 568
+  }
+}

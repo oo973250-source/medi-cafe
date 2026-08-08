@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Based on the image provided, here are the answers to your questions:\n\n**(1) The Info Box:**\nYes, there is a dark brown (semi-transparent looking), rounded rectangular info box in the upper-left area. It contains the text:\n*   **Header:** \"HOW TO ORDER\" (in bold yellow/gold text)\n*   **List:**\n    1.  Pick a meal time\n    2.  Tap a category to expand\n    3.  Tap again to select\n\n**(2) The Left Column (Foods):**\nIt shows **ONE big meal card** that is currently expanded.\n*   **Meal Name:** The card header displays \"**Breakfast**\" with a sunrise icon and a badge saying \"6 items\".\n*   **Content Inside:** The card lists the specific food items vertically with prices on the right (e.g., Firfir - 80 Br, Fatira - 60 Br, Chechebsa - 70 Br, etc.).\n\n**(3) The Right Column (Drinks):**\nYes, along the right edge of the screen, there is a vertical column containing **7 small, white, rounded-rectangular pills** (category buttons). Each pill has an icon on the left and text starting with \"Ca...\" (likely categories like Coffee, Cappuccino, etc.).\n\n**(4) The Chef/Owner:**\nYes, the chef is clearly visible in the **lower-left area** of the screen. She appears to be a woman wearing a traditional white chef's hat (toque), a red headscarf, a white chef's jacket, and a beige apron. She is smiling and gesturing with her hands open/palms up towards the menu.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1786042402,
+  "id": "20260807025315e4693d8c6c9340af",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "20260807025315e4693d8c6c9340af",
+  "usage": {
+    "completion_tokens": 355,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 3802,
+    "prompt_tokens_details": {
+      "cached_tokens": 2
+    },
+    "total_tokens": 4157
+  }
+}

@@ -1,0 +1,828 @@
+     1→import React, { useState, useMemo } from 'react'
+     2→import { motion, AnimatePresence } from 'framer-motion'
+     3→import CafeLogo from './CafeLogo.jsx'
+     4→import { menuData } from '../data/menuData.js'
+     5→import { useCart } from '../context/CartContext.jsx'
+     6→import { useTelegram } from '../hooks/useTelegram.js'
+     7→import { getT } from '../utils/i18n.js'
+     8→
+     9→/**
+    10→ * MainMenu (Frame 2 — rebuilt v3 to match the user's reference sketch)
+    11→ * --------------------------------------------------------------------
+    12→ * Layout (matches the reference image exactly):
+    13→ *
+    14→ *   ┌─────────────────────────────────────────────┐
+    15→ *   │ [Breakfast | Lunch | Dinner | Snacks]  [logo]│  ← top bar
+    16→ *   │                                              │
+    17→ *   │              ┌─ menu ─┐                      │
+    18→ *   │              │  ┊  ┊  │                      │
+    19→ *   │      ┌───────┘   │   └───────┐               │
+    20→ *   │   🍲 FOODS              DRINKS 🥤            │
+    21→ *   │   ┌───────┐         ┌───────┐                │
+    22→ *   │   │ Cat 1 │         │ Cat 1 │                │
+    23→ *   │   ├───────┤         ├───────┤                │
+    24→ *   │   │ Cat 2 │         │ Cat 2 │                │
+    25→ *   │   ├───────┤         ├───────┤                │
+    26→ *   │   │ Cat 3 │  👩‍🍳   │ Cat 3 │  ← owner in     │
+    27→ *   │   ├───────┤  owner  ├───────┤    lower-left  │
+    28→ *   │   │ Cat 4 │  hands  │ Cat 4 │    presenting  │
+    29→ *   │   ├───────┤  raised │ Cat 5 │    the buttons │
+    30→ *   │   │ Cat 5 │  below  ├───────┤                │
+    31→ *   │   ├───────┤  pills  │ Cat 6 │                │
+    32→ *   │   │ Cat 6 │         ├───────┤                │
+    33→ *   │   ├───────┤         │ Cat 7 │                │
+    34→ *   │   │ Cat 7 │         └───────┘                │
+    35→ *   │   └───────┘                                  │
+    36→ *   └─────────────────────────────────────────────┘
+    37→ *
+    38→ * Key alignment rules (from user feedback):
+    39→ *   - Owner sits in the LOWER-LEFT corner (bottom ~40% of screen)
+    40→ *   - Owner's hands are raised into a presenting pose, but they
+    41→ *     do NOT cross or touch the category pills (pills live in a
+    42→ *     separate column on the right)
+    43→ *   - 7 pills per column × 2 columns = 14 categories
+    44→ *   - Owner levitates at "fast normal" speed (~1.8s per cycle)
+    45→ *   - Single language (no Amharic subtitles)
+    46→ *   - Background: blurred coffee-themed pattern
+    47→ */
+    48→
+    49→// Fast-normal levitation: 1.8s per full cycle, ±8px amplitude (visible).
+    50→// Smooth sine-wave keyframes (9 samples per cycle).
+    51→const floatKeyframes = [0, -2, -4, -6, -8, -6, -4, -2, 0]
+    52→const floatTransition = {
+    53→  duration: 1.8,
+    54→  repeat: Infinity,
+    55→  ease: [0.45, 0, 0.55, 1],
+    56→}
+    57→
+    58→const MEAL_TABS = [
+    59→  { key: 'breakfast', labelKey: 'breakfast' },
+    60→  { key: 'lunch',     labelKey: 'lunch' },
+    61→  { key: 'dinner',    labelKey: 'dinner' },
+    62→  { key: 'snacks',    labelKey: 'snacks' },
+    63→]
+    64→
+    65→export default function MainMenu({ onAdvance, bgProps }) {
+    66→  const { setCategory } = useCart()
+    67→  const { hapticFeedback, userLanguage } = useTelegram()
+    68→  const t = getT(userLanguage)
+    69→  const [activeMeal, setActiveMeal] = useState('breakfast')
+    70→  // Two-tap pattern: 1st tap expands the pill to show full category name,
+    71→  // 2nd tap on the same pill confirms selection and advances to Frame 3.
+    72→  // Tapping a different pill collapses the previous one and expands the new.
+    73→  const [expandedCatId, setExpandedCatId] = useState(null)
+    74→
+    75→  // 7 visible categories per column (hidden ones filtered out).
+    76→  // Foods column is FILTERED by the active meal tab. The 4 meal tabs
+    77→  // (breakfast/lunch/dinner/snacks) each map to a category in
+    78→  // menuData.foods.categories. Clicking a meal tab shows ONLY that
+    79→  // meal category in the foods column — not all 7 categories.
+    80→  // Placeholder categories (foods-5/6/7) are excluded since they
+    81→  // don't belong to any specific meal time.
+    82→  const MEAL_TO_CATEGORY = {
+    83→    breakfast: 'breakfast',
+    84→    lunch: 'lunch',
+    85→    dinner: 'dinner',
+    86→    snacks: 'snacks',
+    87→  }
+    88→  const foodCats = useMemo(() => {
+    89→    const targetId = MEAL_TO_CATEGORY[activeMeal] || 'breakfast'
+    90→    return menuData.foods.categories.filter(
+    91→      (c) => !c.hidden && c.id === targetId
+    92→    )
+    93→  }, [activeMeal])
+    94→  const drinkCats = useMemo(
+    95→    () => menuData.drinks.categories.filter((c) => !c.hidden),
+    96→    []
+    97→  )
+    98→
+    99→  // Resolve localized category name based on user language.
+   100→  const localizedCatName = (cat) =>
+   101→    userLanguage === 'am' ? cat.nameAm : cat.nameEn
+   102→
+   103→  const handlePick = (cat, sectionKey) => {
+   104→    if (expandedCatId === cat.id) {
+   105→      // Second tap on the SAME expanded pill → confirm selection + advance.
+   106→      hapticFeedback.impactOccurred('light')
+   107→      setCategory({
+   108→        id: cat.id,
+   109→        nameEn: cat.nameEn,
+   110→        nameAm: cat.nameAm,
+   111→        icon: cat.icon,
+   112→        sectionKey,
+   113→      })
+   114→      onAdvance?.()
+   115→    } else {
+   116→      // First tap (or tap on a different pill) → expand to reveal full name.
+   117→      hapticFeedback.selectionChanged()
+   118→      setExpandedCatId(cat.id)
+   119→    }
+   120→  }
+   121→
+   122→  return (
+   123→    <div
+   124→      style={{
+   125→        position: 'absolute',
+   126→        inset: 0,
+   127→        // New coffee-themed line-art background (user-supplied, v2).
+   128→        backgroundImage: 'url(/backgrounds/coffee-pattern-v2.jpg)',
+   129→        backgroundSize: 'cover',
+   130→        backgroundPosition: 'center',
+   131→        backgroundRepeat: 'no-repeat',
+   132→        overflow: 'hidden',
+   133→      }}
+   134→    >
+   135→      {/* Soft warm overlay on top of the background image.
+   136→          The new background is a clean line-art pattern on cream, so we
+   137→          only need a light cream veil + slight brightness boost — no
+   138→          heavy blur (the pattern is already low-noise and won't compete
+   139→          with the foreground UI). */}
+   140→      <div
+   141→        style={{
+   142→          position: 'absolute',
+   143→          inset: 0,
+   144→          background:
+   145→            'linear-gradient(180deg, rgba(250, 244, 232, 0.45) 0%, rgba(245, 234, 216, 0.55) 100%)',
+   146→          zIndex: 1,
+   147→        }}
+   148→      />
+   149→
+   150→      {/* Top-right: cafe logo (consistent with Frame 1) */}
+   151→      <motion.div
+   152→        initial={{ opacity: 0, scale: 0.6, y: -10 }}
+   153→        animate={{ opacity: 1, scale: 1, y: 0 }}
+   154→        transition={{ delay: 0.2, type: 'spring', stiffness: 120 }}
+   155→        style={{
+   156→          position: 'absolute',
+   157→          top: 'calc(var(--safe-top, 0px) + 14px)',
+   158→          right: 14,
+   159→          width: 50,
+   160→          height: 50,
+   161→          borderRadius: '50%',
+   162→          background: 'rgba(255, 255, 255, 0.96)',
+   163→          display: 'flex',
+   164→          alignItems: 'center',
+   165→          justifyContent: 'center',
+   166→          boxShadow: '0 4px 14px rgba(60, 40, 10, 0.22), 0 0 0 1px rgba(212, 168, 83, 0.4)',
+   167→          zIndex: 30,
+   168→        }}
+   169→      >
+   170→        <CafeLogo size={40} />
+   171→      </motion.div>
+   172→
+   173→      {/* Top: meal-time segmented control */}
+   174→      <motion.div
+   175→        initial={{ opacity: 0, y: -12 }}
+   176→        animate={{ opacity: 1, y: 0 }}
+   177→        transition={{ delay: 0.15, duration: 0.4, ease: 'easeOut' }}
+   178→        style={{
+   179→          position: 'absolute',
+   180→          top: 'calc(var(--safe-top, 0px) + 16px)',
+   181→          left: 14,
+   182→          right: 76,
+   183→          display: 'flex',
+   184→          gap: 4,
+   185→          background: 'rgba(255, 255, 255, 0.75)',
+   186→          padding: 4,
+   187→          borderRadius: 14,
+   188→          border: '1px solid rgba(139, 100, 32, 0.2)',
+   189→          boxShadow: '0 2px 8px rgba(60, 40, 10, 0.1)',
+   190→          backdropFilter: 'blur(8px)',
+   191→          WebkitBackdropFilter: 'blur(8px)',
+   192→          zIndex: 25,
+   193→        }}
+   194→      >
+   195→        {MEAL_TABS.map((tab) => {
+   196→          const active = activeMeal === tab.key
+   197→          return (
+   198→            <motion.button
+   199→              key={tab.key}
+   200→              type="button"
+   201→              onClick={() => {
+   202→                setActiveMeal(tab.key)
+   203→                // Reset any expanded pill so a stale expansion from a
+   204→                // different meal doesn't persist into the new meal.
+   205→                setExpandedCatId(null)
+   206→                hapticFeedback.selectionChanged()
+   207→              }}
+   208→              whileTap={{ scale: 0.94 }}
+   209→              style={{
+   210→                flex: 1,
+   211→                padding: '8px 4px',
+   212→                borderRadius: 10,
+   213→                border: 'none',
+   214→                background: active
+   215→                  ? 'linear-gradient(180deg, #3A2410 0%, #1A0E05 100%)'
+   216→                  : 'transparent',
+   217→                color: active ? '#FFF8E7' : '#5C3A1E',
+   218→                fontWeight: 600,
+   219→                fontSize: 10.5,
+   220→                cursor: 'pointer',
+   221→                transition: 'background 200ms, color 200ms',
+   222→                boxShadow: active
+   223→                  ? '0 2px 6px rgba(58, 36, 16, 0.4)'
+   224→                  : 'none',
+   225→              }}
+   226→            >
+   227→              {t(tab.labelKey)}
+   228→            </motion.button>
+   229→          )
+   230→        })}
+   231→      </motion.div>
+   232→
+   233→      {/* ────────────────────────────────────────────────────────────
+   234→          Info box — guidance card in the empty space ABOVE the owner's head.
+   235→          Sits between the meal tabs (top) and the owner's head (lower-left).
+   236→          Inspired by the user's reference sketch: a dark semi-transparent
+   237→          rounded card with a header pill + 3 short how-to-order lines.
+   238→      ──────────────────────────────────────────────────────────── */}
+   239→      <motion.div
+   240→        initial={{ opacity: 0, y: -8 }}
+   241→        animate={{ opacity: 1, y: 0 }}
+   242→        transition={{ delay: 0.45, duration: 0.4, ease: 'easeOut' }}
+   243→        style={{
+   244→          position: 'absolute',
+   245→          top: 'calc(var(--safe-top, 0px) + 72px)',
+   246→          left: 14,
+   247→          width: '40%',
+   248→          maxWidth: 170,
+   249→          background: 'rgba(40, 28, 16, 0.88)',
+   250→          borderRadius: 14,
+   251→          border: '1px solid rgba(212, 168, 83, 0.35)',
+   252→          boxShadow: '0 6px 18px rgba(0, 0, 0, 0.28)',
+   253→          backdropFilter: 'blur(6px)',
+   254→          WebkitBackdropFilter: 'blur(6px)',
+   255→          padding: '8px 10px 10px',
+   256→          color: '#FFF8E7',
+   257→          zIndex: 15,
+   258→          userSelect: 'none',
+   259→          pointerEvents: 'none',
+   260→        }}
+   261→      >
+   262→        {/* Header pill */}
+   263→        <div
+   264→          style={{
+   265→            display: 'inline-block',
+   266→            background: 'rgba(20, 14, 8, 0.95)',
+   267→            color: '#FCD34D',
+   268→            fontSize: 8.5,
+   269→            fontWeight: 800,
+   270→            letterSpacing: 0.5,
+   271→            textTransform: 'uppercase',
+   272→            padding: '2px 8px',
+   273→            borderRadius: 6,
+   274→            marginBottom: 6,
+   275→          }}
+   276→        >
+   277→          {t('infoTitle')}
+   278→        </div>
+   279→        {/* 3-step instructions */}
+   280→        <div style={{ fontSize: 9, lineHeight: 1.5, color: 'rgba(255, 248, 231, 0.92)' }}>
+   281→          <div>{t('infoStep1')}</div>
+   282→          <div>{t('infoStep2')}</div>
+   283→          <div>{t('infoStep3')}</div>
+   284→        </div>
+   285→      </motion.div>
+   286→
+   287→      {/* ────────────────────────────────────────────────────────────
+   288→          Owner image — LOWER-LEFT corner, BIG + LOWERED.
+   289→          Reference: Tg cafe(2).jpg shows chef taking up large vertical
+   290→          space with body/apron clipped below screen. We achieve this by:
+   291→            1. Making the container big (width 55%, height 84%)
+   292→            2. Pushing the container DOWN off-screen (bottom: -200)
+   293→               so the lower ~33% of the chef is clipped, leaving the
+   294→               upper body (head + chest + raised hands) visible in the
+   295→               bottom-left of the screen.
+   296→          The parent div has overflow:hidden so the clipped portion is
+   297→          never visible. Width is capped at 230px so the chef never
+   298→          touches the buttons column (which starts at left: 45%).
+   299→      ──────────────────────────────────────────────────────────── */}
+   300→      <motion.div
+   301→        initial={{ opacity: 0, scale: 0.94 }}
+   302→        animate={{ opacity: 1, scale: 1 }}
+   303→        transition={{ duration: 0.8, ease: 'easeOut' }}
+   304→        style={{
+   305→          position: 'absolute',
+   306→          left: -25,
+   307→          bottom: -200,
+   308→          width: '55%',
+   309→          maxWidth: 230,
+   310→          height: '84%',
+   311→          maxHeight: 620,
+   312→          zIndex: 5,
+   313→          pointerEvents: 'none',
+   314→        }}
+   315→      >
+   316→        <motion.div
+   317→          initial={{ y: 0 }}
+   318→          animate={{ y: floatKeyframes }}
+   319→          transition={floatTransition}
+   320→          style={{
+   321→            width: '100%',
+   322→            height: '100%',
+   323→            display: 'flex',
+   324→            // Align to TOP because the container is pushed below the
+   325→            // screen (bottom: -160). With top alignment, the image's
+   326→            // head/chest/hands stay visible while the lower body
+   327→            // (apron/feet) is clipped below the screen — making the
+   328→            // chef appear "lowered" with ~35% of her body cut off.
+   329→            alignItems: 'flex-start',
+   330→            justifyContent: 'center',
+   331→          }}
+   332→        >
+   333→          <img
+   334→            src="/owner/pose-6-presenting.png"
+   335→            alt="Cafe owner presenting the menu"
+   336→            draggable={false}
+   337→            style={{
+   338→              height: '100%',
+   339→              width: 'auto',
+   340→              maxWidth: '100%',
+   341→              objectFit: 'contain',
+   342→              objectPosition: 'top center',
+   343→              filter: 'drop-shadow(0 8px 18px rgba(60, 40, 10, 0.3))',
+   344→              userSelect: 'none',
+   345→              pointerEvents: 'none',
+   346→            }}
+   347→          />
+   348→        </motion.div>
+   349→      </motion.div>
+   350→
+   351→      {/* ────────────────────────────────────────────────────────────
+   352→          Right side: tree header + two columns of 7 category pills.
+   353→          Left edge of this container is at 45%, giving the larger
+   354→          owner (left: -12, width: 42% → right edge ~30%) a clear
+   355→          horizontal gap so the owner's hands never touch the pills.
+   356→      ──────────────────────────────────────────────────────────── */}
+   357→      <motion.div
+   358→        initial={{ opacity: 0, x: 20 }}
+   359→        animate={{ opacity: 1, x: 0 }}
+   360→        transition={{ delay: 0.3, duration: 0.5, ease: 'easeOut' }}
+   361→        style={{
+   362→          position: 'absolute',
+   363→          top: 'calc(var(--safe-top, 0px) + 70px)',
+   364→          bottom: 'calc(var(--safe-bottom, 0px) + 8px)',
+   365→          left: '45%',
+   366→          right: 10,
+   367→          display: 'flex',
+   368→          flexDirection: 'column',
+   369→          zIndex: 10,
+   370→        }}
+   371→      >
+   372→        {/* Tree header: menu → foods / drinks */}
+   373→        <div
+   374→          style={{
+   375→            display: 'flex',
+   376→            flexDirection: 'column',
+   377→            alignItems: 'center',
+   378→            marginBottom: 4,
+   379→            userSelect: 'none',
+   380→            flexShrink: 0,
+   381→          }}
+   382→        >
+   383→          {/* Root node: "menu" */}
+   384→          <div
+   385→            style={{
+   386→              padding: '3px 12px',
+   387→              borderRadius: 10,
+   388→              background: 'rgba(58, 36, 16, 0.92)',
+   389→              color: '#FFF8E7',
+   390→              fontSize: 10,
+   391→              fontWeight: 700,
+   392→              letterSpacing: 0.5,
+   393→              textTransform: 'lowercase',
+   394→              boxShadow: '0 2px 6px rgba(58, 36, 16, 0.3)',
+   395→            }}
+   396→          >
+   397→            {t('menuRoot')}
+   398→          </div>
+   399→          {/* Branch lines (SVG) */}
+   400→          <svg
+   401→            width="100%"
+   402→            height="14"
+   403→            viewBox="0 0 200 14"
+   404→            preserveAspectRatio="none"
+   405→            style={{ overflow: 'visible' }}
+   406→          >
+   407→            <path
+   408→              d="M 100 0 C 100 6, 50 5, 50 13"
+   409→              stroke="#8B6420"
+   410→              strokeWidth="1.2"
+   411→              fill="none"
+   412→              strokeLinecap="round"
+   413→              strokeDasharray="3 3"
+   414→            />
+   415→            <path
+   416→              d="M 100 0 C 100 6, 150 5, 150 13"
+   417→              stroke="#8B6420"
+   418→              strokeWidth="1.2"
+   419→              fill="none"
+   420→              strokeLinecap="round"
+   421→              strokeDasharray="3 3"
+   422→            />
+   423→          </svg>
+   424→          {/* Two column headers */}
+   425→          <div
+   426→            style={{
+   427→              display: 'flex',
+   428→              justifyContent: 'space-between',
+   429→              width: '100%',
+   430→              padding: '0 2px',
+   431→              marginTop: -1,
+   432→            }}
+   433→          >
+   434→            <div
+   435→              style={{
+   436→                fontSize: 9.5,
+   437→                fontWeight: 700,
+   438→                color: '#5C3A1E',
+   439→                letterSpacing: 0.4,
+   440→                textTransform: 'uppercase',
+   441→              }}
+   442→            >
+   443→              🍲 {t(activeMeal)}
+   444→            </div>
+   445→            <div
+   446→              style={{
+   447→                fontSize: 9.5,
+   448→                fontWeight: 700,
+   449→                color: '#5C3A1E',
+   450→                letterSpacing: 0.4,
+   451→                textTransform: 'uppercase',
+   452→              }}
+   453→            >
+   454→              {t('drinks')} 🥤
+   455→            </div>
+   456→          </div>
+   457→        </div>
+   458→
+   459→        {/* Two columns of 7 category pills each.
+   460→            TWO-TAP PATTERN (per user feedback):
+   461→              1st tap → pill EXPANDS into a WIDER centered overlay
+   462→                       (~170px, escaping the narrow ~95px column) that
+   463→                       shows the FULL localized category name on ONE
+   464→                       HORIZONTAL LINE — no vertical wrapping.
+   465→              2nd tap on SAME pill → confirms selection + advances
+   466→                                       to Frame 3 (CategoryMenu)
+   467→              Tap on a DIFFERENT pill → collapses the previous,
+   468→                                       expands the new one.
+   469→            Compact pills stay small (46px) so the column stays tidy;
+   470→            only the expanded one becomes a wide floating card. */}
+   471→        <div
+   472→          style={{
+   473→            flex: 1,
+   474→            display: 'flex',
+   475→            gap: 4,
+   476→            minHeight: 0,
+   477→            // Allow expanded overlays to escape the column horizontally.
+   478→            overflow: 'visible',
+   479→          }}
+   480→        >
+   481→          {/* Foods column — single big "meal card" showing the selected
+   482→              meal name + its items list. Since the meal tab filters to
+   483→              exactly 1 category, we render a full-column card instead
+   484→              of a small pill. This makes the foods column visually
+   485→              distinct from the drinks column (which still has 7 small
+   486→              pills) and shows the user what's served at the chosen meal.
+   487→              Two-tap pattern preserved: 1st tap highlights + shows hint,
+   488→              2nd tap advances to Frame 3 (CategoryMenu) with that meal. */}
+   489→          <div
+   490→            style={{
+   491→              flex: 1,
+   492→              display: 'flex',
+   493→              flexDirection: 'column',
+   494→              overflow: 'visible',
+   495→              position: 'relative',
+   496→              minHeight: 0,
+   497→            }}
+   498→          >
+   499→            {foodCats.map((cat) => {
+   500→              const isExpanded = expandedCatId === cat.id
+   501→              return (
+   502→                <motion.button
+   503→                  key={cat.id}
+   504→                  type="button"
+   505→                  initial={{ opacity: 0, scale: 0.96 }}
+   506→                  animate={{ opacity: 1, scale: 1 }}
+   507→                  transition={{ duration: 0.3, ease: 'easeOut' }}
+   508→                  whileTap={{ scale: 0.98 }}
+   509→                  onClick={() => handlePick(cat, 'foods')}
+   510→                  style={{
+   511→                    flex: 1,
+   512→                    width: '100%',
+   513→                    padding: 10,
+   514→                    borderRadius: 16,
+   515→                    border: isExpanded
+   516→                      ? '2px solid #D4A853'
+   517→                      : '1.5px solid rgba(139, 100, 32, 0.25)',
+   518→                    background: isExpanded
+   519→                      ? 'linear-gradient(180deg, #FFF8E7 0%, #F5E6C8 100%)'
+   520→                      : 'rgba(255, 255, 255, 0.92)',
+   521→                    boxShadow: isExpanded
+   522→                      ? '0 8px 22px rgba(212, 168, 83, 0.5)'
+   523→                      : '0 2px 8px rgba(60, 40, 10, 0.15)',
+   524→                    cursor: 'pointer',
+   525→                    display: 'flex',
+   526→                    flexDirection: 'column',
+   527→                    gap: 6,
+   528→                    textAlign: 'left',
+   529→                    backdropFilter: 'blur(4px)',
+   530→                    WebkitBackdropFilter: 'blur(4px)',
+   531→                    minHeight: 0,
+   532→                  }}
+   533→                >
+   534→                  {/* Header: icon + meal name + item count badge */}
+   535→                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+   536→                    <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>
+   537→                      {cat.icon}
+   538→                    </span>
+   539→                    <span
+   540→                      style={{
+   541→                        flex: 1,
+   542→                        fontSize: 13,
+   543→                        fontWeight: 800,
+   544→                        color: '#3A2410',
+   545→                        lineHeight: 1.1,
+   546→                        whiteSpace: 'nowrap',
+   547→                        overflow: 'hidden',
+   548→                        textOverflow: 'ellipsis',
+   549→                      }}
+   550→                    >
+   551→                      {localizedCatName(cat)}
+   552→                    </span>
+   553→                    <span
+   554→                      style={{
+   555→                        fontSize: 9,
+   556→                        color: '#5C3A1E',
+   557→                        background: 'rgba(212, 168, 83, 0.3)',
+   558→                        padding: '2px 7px',
+   559→                        borderRadius: 8,
+   560→                        fontWeight: 700,
+   561→                        flexShrink: 0,
+   562→                        whiteSpace: 'nowrap',
+   563→                      }}
+   564→                    >
+   565→                      {cat.items.length} items
+   566→                    </span>
+   567→                  </div>
+   568→
+   569→                  {/* Items list — shows what's served at this meal */}
+   570→                  <div
+   571→                    style={{
+   572→                      display: 'flex',
+   573→                      flexDirection: 'column',
+   574→                      gap: 1,
+   575→                      overflow: 'hidden',
+   576→                      minHeight: 0,
+   577→                      flex: 1,
+   578→                    }}
+   579→                  >
+   580→                    {cat.items.slice(0, 8).map((item, idx) => (
+   581→                      <div
+   582→                        key={item.id}
+   583→                        style={{
+   584→                          display: 'flex',
+   585→                          justifyContent: 'space-between',
+   586→                          alignItems: 'center',
+   587→                          fontSize: 9.5,
+   588→                          color: '#5C3A1E',
+   589→                          padding: '2px 0',
+   590→                          lineHeight: 1.2,
+   591→                          borderBottom:
+   592→                            idx < Math.min(cat.items.length, 8) - 1
+   593→                              ? '1px dotted rgba(139, 100, 32, 0.18)'
+   594→                              : 'none',
+   595→                        }}
+   596→                      >
+   597→                        <span
+   598→                          style={{
+   599→                            whiteSpace: 'nowrap',
+   600→                            overflow: 'hidden',
+   601→                            textOverflow: 'ellipsis',
+   602→                            flex: 1,
+   603→                          }}
+   604→                        >
+   605→                          {userLanguage === 'am' ? item.nameAm : item.nameEn}
+   606→                        </span>
+   607→                        <span
+   608→                          style={{
+   609→                            fontWeight: 700,
+   610→                            color: '#8B6420',
+   611→                            flexShrink: 0,
+   612→                            marginLeft: 4,
+   613→                          }}
+   614→                        >
+   615→                          {item.price} Br
+   616→                        </span>
+   617→                      </div>
+   618→                    ))}
+   619→                  </div>
+   620→
+   621→                  {/* Footer hint */}
+   622→                  <div
+   623→                    style={{
+   624→                      marginTop: 'auto',
+   625→                      fontSize: 8.5,
+   626→                      color: isExpanded ? '#3A2410' : '#8B6420',
+   627→                      fontWeight: 700,
+   628→                      textAlign: 'center',
+   629→                      paddingTop: 4,
+   630→                      whiteSpace: 'nowrap',
+   631→                      flexShrink: 0,
+   632→                    }}
+   633→                  >
+   634→                    {isExpanded
+   635→                      ? t('tapToSelect')
+   636→                      : `Tap to view ${cat.items.length} items`}
+   637→                  </div>
+   638→                </motion.button>
+   639→              )
+   640→            })}
+   641→          </div>
+   642→
+   643→          {/* Drinks column */}
+   644→          <div
+   645→            style={{
+   646→              flex: 1,
+   647→              display: 'flex',
+   648→              flexDirection: 'column',
+   649→              gap: 4,
+   650→              justifyContent: 'flex-start',
+   651→              overflow: 'visible',
+   652→              paddingBottom: 2,
+   653→              scrollbarWidth: 'thin',
+   654→              position: 'relative',
+   655→            }}
+   656→          >
+   657→            {drinkCats.map((cat, i) => {
+   658→              const isExpanded = expandedCatId === cat.id
+   659→              return (
+   660→                <div
+   661→                  key={cat.id}
+   662→                  style={{
+   663→                    position: 'relative',
+   664→                    height: 46,
+   665→                    flexShrink: 0,
+   666→                  }}
+   667→                >
+   668→                  {/* Compact pill */}
+   669→                  <motion.button
+   670→                    type="button"
+   671→                    initial={{ opacity: 0, y: 6 }}
+   672→                    animate={{ opacity: isExpanded ? 0 : 1, y: 0 }}
+   673→                    transition={{
+   674→                      delay: 0.4 + i * 0.04,
+   675→                      duration: 0.25,
+   676→                    }}
+   677→                    whileTap={{ scale: 0.96 }}
+   678→                    onClick={() => handlePick(cat, 'drinks')}
+   679→                    style={{
+   680→                      height: 46,
+   681→                      width: '100%',
+   682→                      padding: '0 8px',
+   683→                      borderRadius: 14,
+   684→                      border: '1px solid rgba(139, 100, 32, 0.2)',
+   685→                      background: 'rgba(255, 255, 255, 0.88)',
+   686→                      boxShadow: '0 1px 2px rgba(60, 40, 10, 0.1)',
+   687→                      cursor: 'pointer',
+   688→                      display: 'flex',
+   689→                      alignItems: 'center',
+   690→                      gap: 5,
+   691→                      textAlign: 'left',
+   692→                      position: 'relative',
+   693→                      backdropFilter: 'blur(4px)',
+   694→                      WebkitBackdropFilter: 'blur(4px)',
+   695→                      pointerEvents: isExpanded ? 'none' : 'auto',
+   696→                    }}
+   697→                  >
+   698→                    <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{cat.icon}</span>
+   699→                    <span
+   700→                      style={{
+   701→                        flex: 1,
+   702→                        fontSize: 10,
+   703→                        fontWeight: 700,
+   704→                        color: '#3A2410',
+   705→                        lineHeight: 1.2,
+   706→                        whiteSpace: 'nowrap',
+   707→                        overflow: 'hidden',
+   708→                        textOverflow: 'ellipsis',
+   709→                      }}
+   710→                    >
+   711→                      {`Category ${i + 1}`}
+   712→                    </span>
+   713→                    <span
+   714→                      style={{
+   715→                        fontSize: 8,
+   716→                        color: '#8B6420',
+   717→                        background: 'rgba(212, 168, 83, 0.18)',
+   718→                        padding: '1px 5px',
+   719→                        borderRadius: 6,
+   720→                        fontWeight: 600,
+   721→                        flexShrink: 0,
+   722→                      }}
+   723→                    >
+   724→                      {cat.items.length}
+   725→                    </span>
+   726→                  </motion.button>
+   727→
+   728→                  {/* Expanded overlay — wider card anchored to the RIGHT
+   729→                      edge of the pill (extends LEFT into the foods column
+   730→                      area). This keeps the overlay on-screen for the drinks
+   731→                      column (which is on the right edge of the screen) and
+   732→                      matches the user request: "make it in the same spot
+   733→                      where the button was" — left/right edges stay aligned
+   734→                      with the original pill, just bigger. */}
+   735→                  <AnimatePresence>
+   736→                    {isExpanded && (
+   737→                      <motion.div
+   738→                        initial={{ opacity: 0, scale: 0.9, y: -4 }}
+   739→                        animate={{ opacity: 1, scale: 1, y: 0 }}
+   740→                        exit={{ opacity: 0, scale: 0.9, y: -4 }}
+   741→                        transition={{ duration: 0.18, ease: 'easeOut' }}
+   742→                        onClick={() => handlePick(cat, 'drinks')}
+   743→                        style={{
+   744→                          position: 'absolute',
+   745→                          top: -8,
+   746→                          right: 0,
+   747→                          width: 170,
+   748→                          height: 62,
+   749→                          borderRadius: 16,
+   750→                          border: '1.5px solid #D4A853',
+   751→                          background:
+   752→                            'linear-gradient(180deg, #FFF8E7 0%, #F5E6C8 100%)',
+   753→                          boxShadow:
+   754→                            '0 8px 22px rgba(60, 40, 10, 0.4), 0 0 0 4px rgba(255, 248, 231, 0.6)',
+   755→                          display: 'flex',
+   756→                          alignItems: 'center',
+   757→                          padding: '0 12px',
+   758→                          gap: 8,
+   759→                          cursor: 'pointer',
+   760→                          zIndex: 30,
+   761→                          userSelect: 'none',
+   762→                        }}
+   763→                      >
+   764→                        <span style={{ fontSize: 20, lineHeight: 1, flexShrink: 0 }}>
+   765→                          {cat.icon}
+   766→                        </span>
+   767→                        <span
+   768→                          style={{
+   769→                            flex: 1,
+   770→                            fontSize: 13,
+   771→                            fontWeight: 700,
+   772→                            color: '#3A2410',
+   773→                            lineHeight: 1.1,
+   774→                            whiteSpace: 'nowrap',
+   775→                            overflow: 'visible',
+   776→                            textOverflow: 'clip',
+   777→                          }}
+   778→                        >
+   779→                          {localizedCatName(cat)}
+   780→                        </span>
+   781→                        <span
+   782→                          style={{
+   783→                            fontSize: 9,
+   784→                            color: '#5C3A1E',
+   785→                            background: 'rgba(212, 168, 83, 0.35)',
+   786→                            padding: '2px 6px',
+   787→                            borderRadius: 6,
+   788→                            fontWeight: 700,
+   789→                            flexShrink: 0,
+   790→                          }}
+   791→                        >
+   792→                          {cat.items.length}
+   793→                        </span>
+   794→                        <motion.div
+   795→                          initial={{ opacity: 0, y: -4 }}
+   796→                          animate={{ opacity: 1, y: 0 }}
+   797→                          transition={{ delay: 0.08, duration: 0.18 }}
+   798→                          style={{
+   799→                            position: 'absolute',
+   800→                            bottom: -14,
+   801→                            left: '50%',
+   802→                            transform: 'translateX(-50%)',
+   803→                            fontSize: 8.5,
+   804→                            color: '#5C3A1E',
+   805→                            fontWeight: 600,
+   806→                            whiteSpace: 'nowrap',
+   807→                            background: 'rgba(255, 248, 231, 0.95)',
+   808→                            padding: '2px 8px',
+   809→                            borderRadius: 8,
+   810→                            border: '1px solid rgba(212, 168, 83, 0.5)',
+   811→                            boxShadow: '0 2px 6px rgba(60, 40, 10, 0.15)',
+   812→                          }}
+   813→                        >
+   814→                          {t('tapToSelect')}
+   815→                        </motion.div>
+   816→                      </motion.div>
+   817→                    )}
+   818→                  </AnimatePresence>
+   819→                </div>
+   820→              )
+   821→            })}
+   822→          </div>
+   823→        </div>
+   824→      </motion.div>
+   825→    </div>
+   826→  )
+   827→}
+   828→

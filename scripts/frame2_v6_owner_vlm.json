@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Based on the image provided:\n\n1.  **Size:** The chef fills roughly **30-35% of the screen width** and **70-80% of the screen height**.\n2.  **Position:** **Yes**, the chef is positioned in the bottom-left corner.\n3.  **Cut-off:** **Yes**, the chef's body is cut off at the bottom, showing only the upper body (from the head down to the mid-thigh).\n4.  **Overlap:** **No**, the chef does not touch or overlap the category buttons; there is clear space between them.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1785967350,
+  "id": "20260806060228bbe496dd88944af6",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "20260806060228bbe496dd88944af6",
+  "usage": {
+    "completion_tokens": 122,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 380,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "total_tokens": 502
+  }
+}

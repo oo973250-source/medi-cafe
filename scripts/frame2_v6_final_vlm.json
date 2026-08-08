@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Based on the image provided, here is the specific text inside the expanded (gold/taller) category button:\n\n**1) Category Name:**\n*   **Text:** \"Brea kfast\"\n*   **Status:** It is **truncated**. The word \"Breakfast\" is split across two lines (\"Brea\" on the first line, \"kfast\" on the second) and appears to be cut off at the right edge, though most of the letters are visible.\n\n**2) Hint Text:**\n*   **Text:** \"Tap again to select\"\n*   **Status:** It is **complete**. The full phrase is visible on the third line of the button, though the text is small.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1785967339,
+  "id": "20260806060217ddd96d5fbbf94988",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "20260806060217ddd96d5fbbf94988",
+  "usage": {
+    "completion_tokens": 148,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 373,
+    "prompt_tokens_details": {
+      "cached_tokens": 2
+    },
+    "total_tokens": 521
+  }
+}

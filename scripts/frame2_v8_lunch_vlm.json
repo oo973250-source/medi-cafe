@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Based on the image provided, here is the information regarding the food menu:\n\n**What meal is shown?**\nThe meal shown is **Lunch**. This is indicated by the \"Lunch\" tab being selected at the top of the screen and the large \"Lunch\" header on the menu card itself.\n\n**List of items visible in the card with their prices:**\n*   **Doro Wot:** 150 Br\n*   **Tibs:** 120 Br\n*   **Kitfo:** 180 Br\n*   **Shiro Wot:** 70 Br\n*   **Misir Wot:** 65 Br\n*   **Key Wot:** 85 Br\n*   **Gomen:** 55 Br\n*   **Pasta:** 75 Br\n\n**Is this a lunch menu or breakfast menu?**\nThis is a **lunch menu**. The interface explicitly labels this section as \"Lunch\" (containing 8 items), distinct from the \"Breakfast\" option available in the navigation bar at the top.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1786042416,
+  "id": "20260807025332645f7600e1e94ac5",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "20260807025332645f7600e1e94ac5",
+  "usage": {
+    "completion_tokens": 219,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 3727,
+    "prompt_tokens_details": {
+      "cached_tokens": 2
+    },
+    "total_tokens": 3946
+  }
+}

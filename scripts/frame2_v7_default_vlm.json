@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Based on the image provided, here is the description of the cafe ordering app screen:\n\n**(1) Background:**\nThe background is a warm, light beige or cream color. It features a subtle, repeating pattern of line-art illustrations including coffee cups with steam, coffee beans, and croissants. The overall mood is cozy, inviting, and thematic for a café.\n\n**(2) Chef/Owner Image:**\nYes, there is an image of a female chef. She is located in the **bottom-left corner** of the screen. She appears to be life-sized or large relative to the screen dimensions (taking up roughly 25-30% of the vertical space), wearing a white chef's hat, red scarf, and apron, and gesturing towards the menu.\n\n**(3) Category Buttons:**\nYes, the category buttons are relatively **small and compact**. They are arranged in two columns (\"Foods\" and \"Drinks\") and are pill-shaped cards containing an icon, text label, and item count.\n\n**(4) Text Truncation Issues:**\nThere do not appear to be any significant truncation issues. The labels \"Category 1\" through \"Category 7\" are fully visible within their respective buttons without being cut off or shortened to \"Cata...\".",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1786040414,
+  "id": "2026080702201084dfbc4994894109",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "2026080702201084dfbc4994894109",
+  "usage": {
+    "completion_tokens": 262,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 3758,
+    "prompt_tokens_details": {
+      "cached_tokens": 2
+    },
+    "total_tokens": 4020
+  }
+}

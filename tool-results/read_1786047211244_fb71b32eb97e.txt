@@ -1,0 +1,910 @@
+     1→     1→import React, { useState, useMemo } from 'react'
+     2→     2→import { motion, AnimatePresence } from 'framer-motion'
+     3→     3→import CafeLogo from './CafeLogo.jsx'
+     4→     4→import { menuData } from '../data/menuData.js'
+     5→     5→import { useCart } from '../context/CartContext.jsx'
+     6→     6→import { useTelegram } from '../hooks/useTelegram.js'
+     7→     7→import { getT } from '../utils/i18n.js'
+     8→     8→
+     9→     9→/**
+    10→    10→ * MainMenu (Frame 2 — rebuilt v3 to match the user's reference sketch)
+    11→    11→ * --------------------------------------------------------------------
+    12→    12→ * Layout (matches the reference image exactly):
+    13→    13→ *
+    14→    14→ *   ┌─────────────────────────────────────────────┐
+    15→    15→ *   │ [Breakfast | Lunch | Dinner | Snacks]  [logo]│  ← top bar
+    16→    16→ *   │                                              │
+    17→    17→ *   │              ┌─ menu ─┐                      │
+    18→    18→ *   │              │  ┊  ┊  │                      │
+    19→    19→ *   │      ┌───────┘   │   └───────┐               │
+    20→    20→ *   │   🍲 FOODS              DRINKS 🥤            │
+    21→    21→ *   │   ┌───────┐         ┌───────┐                │
+    22→    22→ *   │   │ Cat 1 │         │ Cat 1 │                │
+    23→    23→ *   │   ├───────┤         ├───────┤                │
+    24→    24→ *   │   │ Cat 2 │         │ Cat 2 │                │
+    25→    25→ *   │   ├───────┤         ├───────┤                │
+    26→    26→ *   │   │ Cat 3 │  👩‍🍳   │ Cat 3 │  ← owner in     │
+    27→    27→ *   │   ├───────┤  owner  ├───────┤    lower-left  │
+    28→    28→ *   │   │ Cat 4 │  hands  │ Cat 4 │    presenting  │
+    29→    29→ *   │   ├───────┤  raised │ Cat 5 │    the buttons │
+    30→    30→ *   │   │ Cat 5 │  below  ├───────┤                │
+    31→    31→ *   │   ├───────┤  pills  │ Cat 6 │                │
+    32→    32→ *   │   │ Cat 6 │         ├───────┤                │
+    33→    33→ *   │   ├───────┤         │ Cat 7 │                │
+    34→    34→ *   │   │ Cat 7 │         └───────┘                │
+    35→    35→ *   │   └───────┘                                  │
+    36→    36→ *   └─────────────────────────────────────────────┘
+    37→    37→ *
+    38→    38→ * Key alignment rules (from user feedback):
+    39→    39→ *   - Owner sits in the LOWER-LEFT corner (bottom ~40% of screen)
+    40→    40→ *   - Owner's hands are raised into a presenting pose, but they
+    41→    41→ *     do NOT cross or touch the category pills (pills live in a
+    42→    42→ *     separate column on the right)
+    43→    43→ *   - 7 pills per column × 2 columns = 14 categories
+    44→    44→ *   - Owner levitates at "fast normal" speed (~1.8s per cycle)
+    45→    45→ *   - Single language (no Amharic subtitles)
+    46→    46→ *   - Background: blurred coffee-themed pattern
+    47→    47→ */
+    48→    48→
+    49→    49→// Fast-normal levitation: 1.8s per full cycle, ±8px amplitude (visible).
+    50→    50→// Smooth sine-wave keyframes (9 samples per cycle).
+    51→    51→const floatKeyframes = [0, -2, -4, -6, -8, -6, -4, -2, 0]
+    52→    52→const floatTransition = {
+    53→    53→  duration: 1.8,
+    54→    54→  repeat: Infinity,
+    55→    55→  ease: [0.45, 0, 0.55, 1],
+    56→    56→}
+    57→    57→
+    58→    58→const MEAL_TABS = [
+    59→    59→  // 'All' is the DEFAULT selection — shows every category that exists
+    60→    60→  // (real + placeholder). The other 4 tabs filter the menu to just the
+    61→    61→  // categories whose `mealTimes` array includes the selected meal.
+    62→    62→  { key: 'all',       labelKey: 'all' },
+    63→    63→  { key: 'breakfast', labelKey: 'breakfast' },
+    64→    64→  { key: 'lunch',     labelKey: 'lunch' },
+    65→    65→  { key: 'dinner',    labelKey: 'dinner' },
+    66→    66→  { key: 'snacks',    labelKey: 'snacks' },
+    67→    67→]
+    68→    68→
+    69→    69→export default function MainMenu({ onAdvance, bgProps }) {
+    70→    70→  const { setCategory } = useCart()
+    71→    71→  const { hapticFeedback, userLanguage } = useTelegram()
+    72→    72→  const t = getT(userLanguage)
+    73→    73→  const [activeMeal, setActiveMeal] = useState('all')
+    74→    74→  // Two-tap pattern: 1st tap expands the pill to show full category name,
+    75→    75→  // 2nd tap on the same pill confirms selection and advances to Frame 3.
+    76→    76→  // Tapping a different pill collapses the previous one and expands the new.
+    77→    77→  const [expandedCatId, setExpandedCatId] = useState(null)
+    78→    78→
+    79→    79→  // MEAL-TIME FILTERING (per user spec):
+    80→    80→  //   - 'all' (default) → show every non-hidden category
+    81→    81→  //   - 'breakfast'/'lunch'/'dinner'/'snacks' → show only categories whose
+    82→    82→  //     `mealTimes` array includes the selected meal.
+    83→    83→  // Example: the Snacks category (which contains sambusa) has
+    84→    84→  //   mealTimes: ['snacks'] — so selecting 'Breakfast' hides it entirely,
+    85→    85→  //   because sambusa is not served in the morning. The Breakfast
+    86→    86→  //   category has mealTimes: ['breakfast'], so it shows ONLY when
+    87→    87→  //   'Breakfast' (or 'All') is selected.
+    88→    88→  // Drinks: Hot Drinks has mealTimes covering every meal (coffee is served
+    89→    89→  //   all day); Cold Drinks is hidden at breakfast (juice/soda not typical
+    90→    90→  //   morning fare) but visible at lunch/dinner/snacks.
+    91→    91→  const filterByMeal = (cat) => {
+    92→    92→    if (cat.hidden) return false
+    93→    93→    if (activeMeal === 'all') return true
+    94→    94→    return Array.isArray(cat.mealTimes) && cat.mealTimes.includes(activeMeal)
+    95→    95→  }
+    96→    96→  const foodCats = useMemo(
+    97→    97→    () => menuData.foods.categories.filter(filterByMeal),
+    98→    98→    [activeMeal]
+    99→    99→  )
+   100→   100→  const drinkCats = useMemo(
+   101→   101→    () => menuData.drinks.categories.filter(filterByMeal),
+   102→   102→    [activeMeal]
+   103→   103→  )
+   104→   104→
+   105→   105→  // Resolve localized category name based on user language.
+   106→   106→  const localizedCatName = (cat) =>
+   107→   107→    userLanguage === 'am' ? cat.nameAm : cat.nameEn
+   108→   108→
+   109→   109→  const handlePick = (cat, sectionKey) => {
+   110→   110→    if (expandedCatId === cat.id) {
+   111→   111→      // Second tap on the SAME expanded pill → confirm selection + advance.
+   112→   112→      hapticFeedback.impactOccurred('light')
+   113→   113→      setCategory({
+   114→   114→        id: cat.id,
+   115→   115→        nameEn: cat.nameEn,
+   116→   116→        nameAm: cat.nameAm,
+   117→   117→        icon: cat.icon,
+   118→   118→        sectionKey,
+   119→   119→      })
+   120→   120→      onAdvance?.()
+   121→   121→    } else {
+   122→   122→      // First tap (or tap on a different pill) → expand to reveal full name.
+   123→   123→      hapticFeedback.selectionChanged()
+   124→   124→      setExpandedCatId(cat.id)
+   125→   125→    }
+   126→   126→  }
+   127→   127→
+   128→   128→  return (
+   129→   129→    <div
+   130→   130→      style={{
+   131→   131→        position: 'absolute',
+   132→   132→        inset: 0,
+   133→   133→        // New coffee-themed line-art background (user-supplied, v2).
+   134→   134→        backgroundImage: 'url(/backgrounds/coffee-pattern-v2.jpg)',
+   135→   135→        backgroundSize: 'cover',
+   136→   136→        backgroundPosition: 'center',
+   137→   137→        backgroundRepeat: 'no-repeat',
+   138→   138→        overflow: 'hidden',
+   139→   139→      }}
+   140→   140→    >
+   141→   141→      {/* Soft warm overlay on top of the background image.
+   142→   142→          The new background is a clean line-art pattern on cream, so we
+   143→   143→          only need a light cream veil + slight brightness boost — no
+   144→   144→          heavy blur (the pattern is already low-noise and won't compete
+   145→   145→          with the foreground UI). */}
+   146→   146→      <div
+   147→   147→        style={{
+   148→   148→          position: 'absolute',
+   149→   149→          inset: 0,
+   150→   150→          background:
+   151→   151→            'linear-gradient(180deg, rgba(250, 244, 232, 0.45) 0%, rgba(245, 234, 216, 0.55) 100%)',
+   152→   152→          zIndex: 1,
+   153→   153→        }}
+   154→   154→      />
+   155→   155→
+   156→   156→      {/* Top-right: cafe logo (consistent with Frame 1) */}
+   157→   157→      <motion.div
+   158→   158→        initial={{ opacity: 0, scale: 0.6, y: -10 }}
+   159→   159→        animate={{ opacity: 1, scale: 1, y: 0 }}
+   160→   160→        transition={{ delay: 0.2, type: 'spring', stiffness: 120 }}
+   161→   161→        style={{
+   162→   162→          position: 'absolute',
+   163→   163→          top: 'calc(var(--safe-top, 0px) + 14px)',
+   164→   164→          right: 14,
+   165→   165→          width: 50,
+   166→   166→          height: 50,
+   167→   167→          borderRadius: '50%',
+   168→   168→          background: 'rgba(255, 255, 255, 0.96)',
+   169→   169→          display: 'flex',
+   170→   170→          alignItems: 'center',
+   171→   171→          justifyContent: 'center',
+   172→   172→          boxShadow: '0 4px 14px rgba(60, 40, 10, 0.22), 0 0 0 1px rgba(212, 168, 83, 0.4)',
+   173→   173→          zIndex: 30,
+   174→   174→        }}
+   175→   175→      >
+   176→   176→        <CafeLogo size={40} />
+   177→   177→      </motion.div>
+   178→   178→
+   179→   179→      {/* Top: meal-time segmented control (5 tabs: All / Breakfast / Lunch / Dinner / Snacks) */}
+   180→   180→      <motion.div
+   181→   181→        initial={{ opacity: 0, y: -12 }}
+   182→   182→        animate={{ opacity: 1, y: 0 }}
+   183→   183→        transition={{ delay: 0.15, duration: 0.4, ease: 'easeOut' }}
+   184→   184→        style={{
+   185→   185→          position: 'absolute',
+   186→   186→          top: 'calc(var(--safe-top, 0px) + 16px)',
+   187→   187→          left: 14,
+   188→   188→          right: 76,
+   189→   189→          display: 'flex',
+   190→   190→          gap: 3,
+   191→   191→          background: 'rgba(255, 255, 255, 0.75)',
+   192→   192→          padding: 4,
+   193→   193→          borderRadius: 14,
+   194→   194→          border: '1px solid rgba(139, 100, 32, 0.2)',
+   195→   195→          boxShadow: '0 2px 8px rgba(60, 40, 10, 0.1)',
+   196→   196→          backdropFilter: 'blur(8px)',
+   197→   197→          WebkitBackdropFilter: 'blur(8px)',
+   198→   198→          zIndex: 25,
+   199→   199→        }}
+   200→   200→      >
+   201→   201→        {MEAL_TABS.map((tab) => {
+   202→   202→          const active = activeMeal === tab.key
+   203→   203→          return (
+   204→   204→            <motion.button
+   205→   205→              key={tab.key}
+   206→   206→              type="button"
+   207→   207→              onClick={() => {
+   208→   208→                setActiveMeal(tab.key)
+   209→   209→                // Reset any expanded pill so a stale expansion from a
+   210→   210→                // different meal doesn't persist into the new meal.
+   211→   211→                setExpandedCatId(null)
+   212→   212→                hapticFeedback.selectionChanged()
+   213→   213→              }}
+   214→   214→              whileTap={{ scale: 0.94 }}
+   215→   215→              style={{
+   216→   216→                flex: 1,
+   217→   217→                padding: '8px 2px',
+   218→   218→                borderRadius: 10,
+   219→   219→                border: 'none',
+   220→   220→                background: active
+   221→   221→                  ? 'linear-gradient(180deg, #3A2410 0%, #1A0E05 100%)'
+   222→   222→                  : 'transparent',
+   223→   223→                color: active ? '#FFF8E7' : '#5C3A1E',
+   224→   224→                fontWeight: 600,
+   225→   225→                fontSize: 10,
+   226→   226→                cursor: 'pointer',
+   227→   227→                transition: 'background 200ms, color 200ms',
+   228→   228→                boxShadow: active
+   229→   229→                  ? '0 2px 6px rgba(58, 36, 16, 0.4)'
+   230→   230→                  : 'none',
+   231→   231→              }}
+   232→   232→            >
+   233→   233→              {t(tab.labelKey)}
+   234→   234→            </motion.button>
+   235→   235→          )
+   236→   236→        })}
+   237→   237→      </motion.div>
+   238→   238→
+   239→   239→      {/* ────────────────────────────────────────────────────────────
+   240→   240→          Info box — small guidance card in the empty space ABOVE the
+   241→   241→          owner's head. Per user feedback v10:
+   242→   242→            - LOWER (top: 108 → 200) so it doesn't overlap an expanded
+   243→   243→              category pill when the first pill is tapped.
+   244→   244→            - SMALLER: dropped the subtitle + 4th step (added in v9),
+   245→   245→              tighter padding, smaller fonts, narrower width. The user
+   246→   246→              said "smaller is much cool".
+   247→   247→      ──────────────────────────────────────────────────────────── */}
+   248→   248→      <motion.div
+   249→   249→        initial={{ opacity: 0, y: -8 }}
+   250→   250→        animate={{ opacity: 1, y: 0 }}
+   251→   251→        transition={{ delay: 0.45, duration: 0.4, ease: 'easeOut' }}
+   252→   252→        style={{
+   253→   253→          position: 'absolute',
+   254→   254→          // Pushed DOWN to 200px so it sits BELOW the first row of pills
+   255→   255→          // (first pill at y≈120, expanded overlay spans y≈112-190).
+   256→   256→          // The box now lives in the gap between the first pill row and
+   257→   257→          // the owner's head, leaving the expanded overlay clear.
+   258→   258→          top: 'calc(var(--safe-top, 0px) + 200px)',
+   259→   259→          left: 14,
+   260→   260→          width: '38%',
+   261→   261→          maxWidth: 148,
+   262→   262→          background: 'rgba(40, 28, 16, 0.88)',
+   263→   263→          borderRadius: 12,
+   264→   264→          border: '1px solid rgba(212, 168, 83, 0.35)',
+   265→   265→          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.24)',
+   266→   266→          backdropFilter: 'blur(6px)',
+   267→   267→          WebkitBackdropFilter: 'blur(6px)',
+   268→   268→          // Tight padding (was 12px 12px 14px in v9).
+   269→   269→          padding: '8px 10px 10px',
+   270→   270→          color: '#FFF8E7',
+   271→   271→          zIndex: 15,
+   272→   272→          userSelect: 'none',
+   273→   273→          pointerEvents: 'none',
+   274→   274→        }}
+   275→   275→      >
+   276→   276→        {/* Header pill — smaller (was 8.5 / 3px 9px) */}
+   277→   277→        <div
+   278→   278→          style={{
+   279→   279→            display: 'inline-block',
+   280→   280→            background: 'rgba(20, 14, 8, 0.95)',
+   281→   281→            color: '#FCD34D',
+   282→   282→            fontSize: 7.5,
+   283→   283→            fontWeight: 800,
+   284→   284→            letterSpacing: 0.4,
+   285→   285→            textTransform: 'uppercase',
+   286→   286→            padding: '2px 7px',
+   287→   287→            borderRadius: 5,
+   288→   288→            marginBottom: 5,
+   289→   289→          }}
+   290→   290→        >
+   291→   291→          {t('infoTitle')}
+   292→   292→        </div>
+   293→   293→        {/* 3-step instructions (back to v8 count, but tighter) */}
+   294→   294→        <div style={{ fontSize: 8.5, lineHeight: 1.4, color: 'rgba(255, 248, 231, 0.92)' }}>
+   295→   295→          <div>{t('infoStep1')}</div>
+   296→   296→          <div>{t('infoStep2')}</div>
+   297→   297→          <div>{t('infoStep3')}</div>
+   298→   298→        </div>
+   299→   299→      </motion.div>
+   300→   300→
+   301→   301→      {/* ────────────────────────────────────────────────────────────
+   302→   302→          Owner image — LOWER-LEFT corner, BIG + LOWERED.
+   303→   303→          Reference: Tg cafe(2).jpg shows chef taking up large vertical
+   304→   304→          space with body/apron clipped below screen. We achieve this by:
+   305→   305→            1. Making the container big (width 55%, height 84%)
+   306→   306→            2. Pushing the container DOWN off-screen (bottom: -200)
+   307→   307→               so the lower ~33% of the chef is clipped, leaving the
+   308→   308→               upper body (head + chest + raised hands) visible in the
+   309→   309→               bottom-left of the screen.
+   310→   310→          The parent div has overflow:hidden so the clipped portion is
+   311→   311→          never visible. Width is capped at 230px so the chef never
+   312→   312→          touches the buttons column (which starts at left: 45%).
+   313→   313→      ──────────────────────────────────────────────────────────── */}
+   314→   314→      <motion.div
+   315→   315→        initial={{ opacity: 0, scale: 0.94 }}
+   316→   316→        animate={{ opacity: 1, scale: 1 }}
+   317→   317→        transition={{ duration: 0.8, ease: 'easeOut' }}
+   318→   318→        style={{
+   319→   319→          position: 'absolute',
+   320→   320→          left: -25,
+   321→   321→          bottom: -200,
+   322→   322→          width: '55%',
+   323→   323→          maxWidth: 230,
+   324→   324→          height: '84%',
+   325→   325→          maxHeight: 620,
+   326→   326→          zIndex: 5,
+   327→   327→          pointerEvents: 'none',
+   328→   328→        }}
+   329→   329→      >
+   330→   330→        <motion.div
+   331→   331→          initial={{ y: 0 }}
+   332→   332→          animate={{ y: floatKeyframes }}
+   333→   333→          transition={floatTransition}
+   334→   334→          style={{
+   335→   335→            width: '100%',
+   336→   336→            height: '100%',
+   337→   337→            display: 'flex',
+   338→   338→            // Align to TOP because the container is pushed below the
+   339→   339→            // screen (bottom: -160). With top alignment, the image's
+   340→   340→            // head/chest/hands stay visible while the lower body
+   341→   341→            // (apron/feet) is clipped below the screen — making the
+   342→   342→            // chef appear "lowered" with ~35% of her body cut off.
+   343→   343→            alignItems: 'flex-start',
+   344→   344→            justifyContent: 'center',
+   345→   345→          }}
+   346→   346→        >
+   347→   347→          <img
+   348→   348→            src="/owner/pose-6-presenting.png"
+   349→   349→            alt="Cafe owner presenting the menu"
+   350→   350→            draggable={false}
+   351→   351→            style={{
+   352→   352→              height: '100%',
+   353→   353→              width: 'auto',
+   354→   354→              maxWidth: '100%',
+   355→   355→              objectFit: 'contain',
+   356→   356→              objectPosition: 'top center',
+   357→   357→              filter: 'drop-shadow(0 8px 18px rgba(60, 40, 10, 0.3))',
+   358→   358→              userSelect: 'none',
+   359→   359→              pointerEvents: 'none',
+   360→   360→            }}
+   361→   361→          />
+   362→   362→        </motion.div>
+   363→   363→      </motion.div>
+   364→   364→
+   365→   365→      {/* ────────────────────────────────────────────────────────────
+   366→   366→          Right side: tree header + two columns of 7 category pills.
+   367→   367→          Left edge moved from 45% → 42% (per user v10: "move the menu
+   368→   368→          to the left") to give the drinks column more right-edge
+   369→   369→          breathing room so the expanded overlay is never clipped on
+   370→   370→          phone ratio. 42% on a 390px viewport = ~164px — just past
+   371→   371→          the owner chef figure's visible right edge (~165px), so the
+   372→   372→          menu doesn't visually cross the owner.
+   373→   373→          Right margin increased from 10 → 16 for extra safety.
+   374→   374→      ──────────────────────────────────────────────────────────── */}
+   375→   375→      <motion.div
+   376→   376→        initial={{ opacity: 0, x: 20 }}
+   377→   377→        animate={{ opacity: 1, x: 0 }}
+   378→   378→        transition={{ delay: 0.3, duration: 0.5, ease: 'easeOut' }}
+   379→   379→        style={{
+   380→   380→          position: 'absolute',
+   381→   381→          top: 'calc(var(--safe-top, 0px) + 70px)',
+   382→   382→          bottom: 'calc(var(--safe-bottom, 0px) + 8px)',
+   383→   383→          left: '42%',
+   384→   384→          right: 16,
+   385→   385→          display: 'flex',
+   386→   386→          flexDirection: 'column',
+   387→   387→          zIndex: 10,
+   388→   388→        }}
+   389→   389→      >
+   390→   390→        {/* Tree header: menu → foods / drinks */}
+   391→   391→        <div
+   392→   392→          style={{
+   393→   393→            display: 'flex',
+   394→   394→            flexDirection: 'column',
+   395→   395→            alignItems: 'center',
+   396→   396→            marginBottom: 4,
+   397→   397→            userSelect: 'none',
+   398→   398→            flexShrink: 0,
+   399→   399→          }}
+   400→   400→        >
+   401→   401→          {/* Root node: "menu" */}
+   402→   402→          <div
+   403→   403→            style={{
+   404→   404→              padding: '3px 12px',
+   405→   405→              borderRadius: 10,
+   406→   406→              background: 'rgba(58, 36, 16, 0.92)',
+   407→   407→              color: '#FFF8E7',
+   408→   408→              fontSize: 10,
+   409→   409→              fontWeight: 700,
+   410→   410→              letterSpacing: 0.5,
+   411→   411→              textTransform: 'lowercase',
+   412→   412→              boxShadow: '0 2px 6px rgba(58, 36, 16, 0.3)',
+   413→   413→            }}
+   414→   414→          >
+   415→   415→            {t('menuRoot')}
+   416→   416→          </div>
+   417→   417→          {/* Branch lines (SVG) */}
+   418→   418→          <svg
+   419→   419→            width="100%"
+   420→   420→            height="14"
+   421→   421→            viewBox="0 0 200 14"
+   422→   422→            preserveAspectRatio="none"
+   423→   423→            style={{ overflow: 'visible' }}
+   424→   424→          >
+   425→   425→            <path
+   426→   426→              d="M 100 0 C 100 6, 50 5, 50 13"
+   427→   427→              stroke="#8B6420"
+   428→   428→              strokeWidth="1.2"
+   429→   429→              fill="none"
+   430→   430→              strokeLinecap="round"
+   431→   431→              strokeDasharray="3 3"
+   432→   432→            />
+   433→   433→            <path
+   434→   434→              d="M 100 0 C 100 6, 150 5, 150 13"
+   435→   435→              stroke="#8B6420"
+   436→   436→              strokeWidth="1.2"
+   437→   437→              fill="none"
+   438→   438→              strokeLinecap="round"
+   439→   439→              strokeDasharray="3 3"
+   440→   440→            />
+   441→   441→          </svg>
+   442→   442→          {/* Two column headers */}
+   443→   443→          <div
+   444→   444→            style={{
+   445→   445→              display: 'flex',
+   446→   446→              justifyContent: 'space-between',
+   447→   447→              width: '100%',
+   448→   448→              padding: '0 2px',
+   449→   449→              marginTop: -1,
+   450→   450→            }}
+   451→   451→          >
+   452→   452→            <div
+   453→   453→              style={{
+   454→   454→                fontSize: 9.5,
+   455→   455→                fontWeight: 700,
+   456→   456→                color: '#5C3A1E',
+   457→   457→                letterSpacing: 0.4,
+   458→   458→                textTransform: 'uppercase',
+   459→   459→              }}
+   460→   460→            >
+   461→   461→              🍲 {t('foods')}
+   462→   462→            </div>
+   463→   463→            <div
+   464→   464→              style={{
+   465→   465→                fontSize: 9.5,
+   466→   466→                fontWeight: 700,
+   467→   467→                color: '#5C3A1E',
+   468→   468→                letterSpacing: 0.4,
+   469→   469→                textTransform: 'uppercase',
+   470→   470→              }}
+   471→   471→            >
+   472→   472→              {t('drinks')} 🥤
+   473→   473→            </div>
+   474→   474→          </div>
+   475→   475→        </div>
+   476→   476→
+   477→   477→        {/* Two columns of 7 category pills each.
+   478→   478→            TWO-TAP PATTERN (per user feedback):
+   479→   479→              1st tap → pill EXPANDS into a WIDER centered overlay
+   480→   480→                       (~170px, escaping the narrow ~95px column) that
+   481→   481→                       shows the FULL localized category name on ONE
+   482→   482→                       HORIZONTAL LINE — no vertical wrapping.
+   483→   483→              2nd tap on SAME pill → confirms selection + advances
+   484→   484→                                       to Frame 3 (CategoryMenu)
+   485→   485→              Tap on a DIFFERENT pill → collapses the previous,
+   486→   486→                                       expands the new one.
+   487→   487→            Compact pills stay small (46px) so the column stays tidy;
+   488→   488→            only the expanded one becomes a wide floating card. */}
+   489→   489→        <div
+   490→   490→          style={{
+   491→   491→            flex: 1,
+   492→   492→            display: 'flex',
+   493→   493→            gap: 4,
+   494→   494→            minHeight: 0,
+   495→   495→            // Allow expanded overlays to escape the column horizontally.
+   496→   496→            overflow: 'visible',
+   497→   497→          }}
+   498→   498→        >
+   499→   499→          {/* Foods column — compact pills (same pattern as the drinks
+   500→   500→              column). Filtered by the active meal tab via `mealTimes`.
+   501→   501→              When 'All' is selected, every non-hidden foods category is
+   502→   502→              shown (real + placeholders). When a specific meal is picked,
+   503→   503→              only categories whose `mealTimes` includes that meal appear —
+   504→   504→              e.g., selecting 'Breakfast' shows only the Breakfast category
+   505→   505→              and HIDES Snacks (which contains sambusa, not served at
+   506→   506→              breakfast). Two-tap pattern preserved: 1st tap expands the
+   507→   507→              pill into a wider horizontal overlay showing the full
+   508→   508→              category name; 2nd tap on the same pill advances to Frame 3. */}
+   509→   509→          <div
+   510→   510→            style={{
+   511→   511→              flex: 1,
+   512→   512→              // minWidth: 0 is CRITICAL — without it, flex items won't
+   513→   513→              // shrink below their content's min-width (which is the
+   514→   514→              // default `min-width: auto`). This was causing the drinks
+   515→   515→              // column to overflow past the menu container's right edge
+   516→   516→              // by ~26px, which in turn pushed the expanded overlay
+   517→   517→              // off-screen on phone ratio. With minWidth: 0, both
+   518→   518→              // columns are forced to equal width (= half the container).
+   519→   519→              minWidth: 0,
+   520→   520→              display: 'flex',
+   521→   521→              flexDirection: 'column',
+   522→   522→              gap: 4,
+   523→   523→              justifyContent: 'flex-start',
+   524→   524→              overflow: 'visible',
+   525→   525→              paddingBottom: 2,
+   526→   526→              position: 'relative',
+   527→   527→            }}
+   528→   528→          >
+   529→   529→            {foodCats.length === 0 && (
+   530→   530→              <div
+   531→   531→                style={{
+   532→   532→                  flex: 1,
+   533→   533→                  display: 'flex',
+   534→   534→                  alignItems: 'center',
+   535→   535→                  justifyContent: 'center',
+   536→   536→                  color: '#8B6420',
+   537→   537→                  fontSize: 10,
+   538→   538→                  textAlign: 'center',
+   539→   539→                  padding: 12,
+   540→   540→                  fontStyle: 'italic',
+   541→   541→                  lineHeight: 1.4,
+   542→   542→                }}
+   543→   543→              >
+   544→   544→                Nothing on the menu for this meal time.
+   545→   545→              </div>
+   546→   546→            )}
+   547→   547→            {foodCats.map((cat, i) => {
+   548→   548→              const isExpanded = expandedCatId === cat.id
+   549→   549→              return (
+   550→   550→                <div
+   551→   551→                  key={cat.id}
+   552→   552→                  style={{
+   553→   553→                    position: 'relative',
+   554→   554→                    height: 46,
+   555→   555→                    flexShrink: 0,
+   556→   556→                  }}
+   557→   557→                >
+   558→   558→                  {/* Compact pill */}
+   559→   559→                  <motion.button
+   560→   560→                    type="button"
+   561→   561→                    initial={{ opacity: 0, y: 6 }}
+   562→   562→                    animate={{ opacity: isExpanded ? 0 : 1, y: 0 }}
+   563→   563→                    transition={{
+   564→   564→                      delay: 0.4 + i * 0.04,
+   565→   565→                      duration: 0.25,
+   566→   566→                    }}
+   567→   567→                    whileTap={{ scale: 0.96 }}
+   568→   568→                    onClick={() => handlePick(cat, 'foods')}
+   569→   569→                    style={{
+   570→   570→                      height: 46,
+   571→   571→                      width: '100%',
+   572→   572→                      padding: '0 8px',
+   573→   573→                      borderRadius: 14,
+   574→   574→                      border: '1px solid rgba(139, 100, 32, 0.2)',
+   575→   575→                      background: 'rgba(255, 255, 255, 0.88)',
+   576→   576→                      boxShadow: '0 1px 2px rgba(60, 40, 10, 0.1)',
+   577→   577→                      cursor: 'pointer',
+   578→   578→                      display: 'flex',
+   579→   579→                      alignItems: 'center',
+   580→   580→                      gap: 5,
+   581→   581→                      textAlign: 'left',
+   582→   582→                      position: 'relative',
+   583→   583→                      backdropFilter: 'blur(4px)',
+   584→   584→                      WebkitBackdropFilter: 'blur(4px)',
+   585→   585→                      pointerEvents: isExpanded ? 'none' : 'auto',
+   586→   586→                    }}
+   587→   587→                  >
+   588→   588→                    <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{cat.icon}</span>
+   589→   589→                    <span
+   590→   590→                      style={{
+   591→   591→                        flex: 1,
+   592→   592→                        fontSize: 10,
+   593→   593→                        fontWeight: 700,
+   594→   594→                        color: '#3A2410',
+   595→   595→                        lineHeight: 1.2,
+   596→   596→                        whiteSpace: 'nowrap',
+   597→   597→                        overflow: 'hidden',
+   598→   598→                        textOverflow: 'ellipsis',
+   599→   599→                      }}
+   600→   600→                    >
+   601→   601→                      {localizedCatName(cat)}
+   602→   602→                    </span>
+   603→   603→                    <span
+   604→   604→                      style={{
+   605→   605→                        fontSize: 8,
+   606→   606→                        color: '#8B6420',
+   607→   607→                        background: 'rgba(212, 168, 83, 0.18)',
+   608→   608→                        padding: '1px 5px',
+   609→   609→                        borderRadius: 6,
+   610→   610→                        fontWeight: 600,
+   611→   611→                        flexShrink: 0,
+   612→   612→                      }}
+   613→   613→                    >
+   614→   614→                      {cat.items.length}
+   615→   615→                    </span>
+   616→   616→                  </motion.button>
+   617→   617→
+   618→   618→                  {/* Expanded overlay — wider card anchored to the RIGHT
+   619→   619→                      edge of the pill (extends LEFT). This is the SAME
+   620→   620→                      pattern as the drinks column: stays on-screen for
+   621→   621→                      phone ratio because the right edge is aligned with
+   622→   622→                      the original pill (matches user request: "make it
+   623→   623→                      in the same spot where the button was — just
+   624→   624→                      zoomed bigger"). The full localized category name
+   625→   625→                      is shown on ONE horizontal line (no wrapping). */}
+   626→   626→                  <AnimatePresence>
+   627→   627→                    {isExpanded && (
+   628→   628→                      <motion.div
+   629→   629→                        initial={{ opacity: 0, scale: 0.9, y: -4 }}
+   630→   630→                        animate={{ opacity: 1, scale: 1, y: 0 }}
+   631→   631→                        exit={{ opacity: 0, scale: 0.9, y: -4 }}
+   632→   632→                        transition={{ duration: 0.18, ease: 'easeOut' }}
+   633→   633→                        onClick={() => handlePick(cat, 'foods')}
+   634→   634→                        style={{
+   635→   635→                          position: 'absolute',
+   636→   636→                          top: -8,
+   637→   637→                          right: 0,
+   638→   638→                          // Shrunk from 170 → 140 (v10) so the overlay
+   639→   639→                          // is guaranteed not to clip on phone ratio even
+   640→   640→                          // when the menu container is at left: 42%.
+   641→   641→                          width: 140,
+   642→   642→                          height: 56,
+   643→   643→                          borderRadius: 14,
+   644→   644→                          border: '1.5px solid #D4A853',
+   645→   645→                          background:
+   646→   646→                            'linear-gradient(180deg, #FFF8E7 0%, #F5E6C8 100%)',
+   647→   647→                          boxShadow:
+   648→   648→                            '0 6px 18px rgba(60, 40, 10, 0.4), 0 0 0 3px rgba(255, 248, 231, 0.6)',
+   649→   649→                          display: 'flex',
+   650→   650→                          alignItems: 'center',
+   651→   651→                          padding: '0 10px',
+   652→   652→                          gap: 6,
+   653→   653→                          cursor: 'pointer',
+   654→   654→                          zIndex: 30,
+   655→   655→                          userSelect: 'none',
+   656→   656→                        }}
+   657→   657→                      >
+   658→   658→                        <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>
+   659→   659→                          {cat.icon}
+   660→   660→                        </span>
+   661→   661→                        <span
+   662→   662→                          style={{
+   663→   663→                            flex: 1,
+   664→   664→                            fontSize: 11.5,
+   665→   665→                            fontWeight: 700,
+   666→   666→                            color: '#3A2410',
+   667→   667→                            lineHeight: 1.1,
+   668→   668→                            whiteSpace: 'nowrap',
+   669→   669→                            overflow: 'visible',
+   670→   670→                            textOverflow: 'clip',
+   671→   671→                          }}
+   672→   672→                        >
+   673→   673→                          {localizedCatName(cat)}
+   674→   674→                        </span>
+   675→   675→                        <span
+   676→   676→                          style={{
+   677→   677→                            fontSize: 8.5,
+   678→   678→                            color: '#5C3A1E',
+   679→   679→                            background: 'rgba(212, 168, 83, 0.35)',
+   680→   680→                            padding: '2px 5px',
+   681→   681→                            borderRadius: 5,
+   682→   682→                            fontWeight: 700,
+   683→   683→                            flexShrink: 0,
+   684→   684→                          }}
+   685→   685→                        >
+   686→   686→                          {cat.items.length}
+   687→   687→                        </span>
+   688→   688→                        <motion.div
+   689→   689→                          initial={{ opacity: 0, y: -4 }}
+   690→   690→                          animate={{ opacity: 1, y: 0 }}
+   691→   691→                          transition={{ delay: 0.08, duration: 0.18 }}
+   692→   692→                          style={{
+   693→   693→                            position: 'absolute',
+   694→   694→                            bottom: -12,
+   695→   695→                            left: '50%',
+   696→   696→                            transform: 'translateX(-50%)',
+   697→   697→                            fontSize: 8,
+   698→   698→                            color: '#5C3A1E',
+   699→   699→                            fontWeight: 600,
+   700→   700→                            whiteSpace: 'nowrap',
+   701→   701→                            background: 'rgba(255, 248, 231, 0.95)',
+   702→   702→                            padding: '2px 7px',
+   703→   703→                            borderRadius: 7,
+   704→   704→                            border: '1px solid rgba(212, 168, 83, 0.5)',
+   705→   705→                            boxShadow: '0 2px 6px rgba(60, 40, 10, 0.15)',
+   706→   706→                          }}
+   707→   707→                        >
+   708→   708→                          {t('tapToSelect')}
+   709→   709→                        </motion.div>
+   710→   710→                      </motion.div>
+   711→   711→                    )}
+   712→   712→                  </AnimatePresence>
+   713→   713→                </div>
+   714→   714→              )
+   715→   715→            })}
+   716→   716→          </div>
+   717→   717→
+   718→   718→          {/* Drinks column */}
+   719→   719→          <div
+   720→   720→            style={{
+   721→   721→              flex: 1,
+   722→   722→              // minWidth: 0 — same fix as foods column (see comment above).
+   723→   723→              // Without this, the drinks column overflows the menu
+   724→   724→              // container and the expanded overlay gets clipped on
+   725→   725→              // phone ratio.
+   726→   726→              minWidth: 0,
+   727→   727→              display: 'flex',
+   728→   728→              flexDirection: 'column',
+   729→   729→              gap: 4,
+   730→   730→              justifyContent: 'flex-start',
+   731→   731→              overflow: 'visible',
+   732→   732→              paddingBottom: 2,
+   733→   733→              position: 'relative',
+   734→   734→            }}
+   735→   735→          >
+   736→   736→            {drinkCats.map((cat, i) => {
+   737→   737→              const isExpanded = expandedCatId === cat.id
+   738→   738→              return (
+   739→   739→                <div
+   740→   740→                  key={cat.id}
+   741→   741→                  style={{
+   742→   742→                    position: 'relative',
+   743→   743→                    height: 46,
+   744→   744→                    flexShrink: 0,
+   745→   745→                  }}
+   746→   746→                >
+   747→   747→                  {/* Compact pill */}
+   748→   748→                  <motion.button
+   749→   749→                    type="button"
+   750→   750→                    initial={{ opacity: 0, y: 6 }}
+   751→   751→                    animate={{ opacity: isExpanded ? 0 : 1, y: 0 }}
+   752→   752→                    transition={{
+   753→   753→                      delay: 0.4 + i * 0.04,
+   754→   754→                      duration: 0.25,
+   755→   755→                    }}
+   756→   756→                    whileTap={{ scale: 0.96 }}
+   757→   757→                    onClick={() => handlePick(cat, 'drinks')}
+   758→   758→                    style={{
+   759→   759→                      height: 46,
+   760→   760→                      width: '100%',
+   761→   761→                      padding: '0 8px',
+   762→   762→                      borderRadius: 14,
+   763→   763→                      border: '1px solid rgba(139, 100, 32, 0.2)',
+   764→   764→                      background: 'rgba(255, 255, 255, 0.88)',
+   765→   765→                      boxShadow: '0 1px 2px rgba(60, 40, 10, 0.1)',
+   766→   766→                      cursor: 'pointer',
+   767→   767→                      display: 'flex',
+   768→   768→                      alignItems: 'center',
+   769→   769→                      gap: 5,
+   770→   770→                      textAlign: 'left',
+   771→   771→                      position: 'relative',
+   772→   772→                      backdropFilter: 'blur(4px)',
+   773→   773→                      WebkitBackdropFilter: 'blur(4px)',
+   774→   774→                      pointerEvents: isExpanded ? 'none' : 'auto',
+   775→   775→                    }}
+   776→   776→                  >
+   777→   777→                    <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{cat.icon}</span>
+   778→   778→                    <span
+   779→   779→                      style={{
+   780→   780→                        flex: 1,
+   781→   781→                        fontSize: 10,
+   782→   782→                        fontWeight: 700,
+   783→   783→                        color: '#3A2410',
+   784→   784→                        lineHeight: 1.2,
+   785→   785→                        whiteSpace: 'nowrap',
+   786→   786→                        overflow: 'hidden',
+   787→   787→                        textOverflow: 'ellipsis',
+   788→   788→                      }}
+   789→   789→                    >
+   790→   790→                      {localizedCatName(cat)}
+   791→   791→                    </span>
+   792→   792→                    <span
+   793→   793→                      style={{
+   794→   794→                        fontSize: 8,
+   795→   795→                        color: '#8B6420',
+   796→   796→                        background: 'rgba(212, 168, 83, 0.18)',
+   797→   797→                        padding: '1px 5px',
+   798→   798→                        borderRadius: 6,
+   799→   799→                        fontWeight: 600,
+   800→   800→                        flexShrink: 0,
+   801→   801→                      }}
+   802→   802→                    >
+   803→   803→                      {cat.items.length}
+   804→   804→                    </span>
+   805→   805→                  </motion.button>
+   806→   806→
+   807→   807→                  {/* Expanded overlay — wider card anchored to the RIGHT
+   808→   808→                      edge of the pill (extends LEFT into the foods column
+   809→   809→                      area). This keeps the overlay on-screen for the drinks
+   810→   810→                      column (which is on the right edge of the screen) and
+   811→   811→                      matches the user request: "make it in the same spot
+   812→   812→                      where the button was" — left/right edges stay aligned
+   813→   813→                      with the original pill, just bigger. */}
+   814→   814→                  <AnimatePresence>
+   815→   815→                    {isExpanded && (
+   816→   816→                      <motion.div
+   817→   817→                        initial={{ opacity: 0, scale: 0.9, y: -4 }}
+   818→   818→                        animate={{ opacity: 1, scale: 1, y: 0 }}
+   819→   819→                        exit={{ opacity: 0, scale: 0.9, y: -4 }}
+   820→   820→                        transition={{ duration: 0.18, ease: 'easeOut' }}
+   821→   821→                        onClick={() => handlePick(cat, 'drinks')}
+   822→   822→                        style={{
+   823→   823→                          position: 'absolute',
+   824→   824→                          top: -8,
+   825→   825→                          right: 0,
+   826→   826→                          // Shrunk from 170 → 140 (v10) so the overlay
+   827→   827→                          // is guaranteed not to clip on phone ratio even
+   828→   828→                          // when the menu container is at left: 42%.
+   829→   829→                          width: 140,
+   830→   830→                          height: 56,
+   831→   831→                          borderRadius: 14,
+   832→   832→                          border: '1.5px solid #D4A853',
+   833→   833→                          background:
+   834→   834→                            'linear-gradient(180deg, #FFF8E7 0%, #F5E6C8 100%)',
+   835→   835→                          boxShadow:
+   836→   836→                            '0 6px 18px rgba(60, 40, 10, 0.4), 0 0 0 3px rgba(255, 248, 231, 0.6)',
+   837→   837→                          display: 'flex',
+   838→   838→                          alignItems: 'center',
+   839→   839→                          padding: '0 10px',
+   840→   840→                          gap: 6,
+   841→   841→                          cursor: 'pointer',
+   842→   842→                          zIndex: 30,
+   843→   843→                          userSelect: 'none',
+   844→   844→                        }}
+   845→   845→                      >
+   846→   846→                        <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>
+   847→   847→                          {cat.icon}
+   848→   848→                        </span>
+   849→   849→                        <span
+   850→   850→                          style={{
+   851→   851→                            flex: 1,
+   852→   852→                            fontSize: 11.5,
+   853→   853→                            fontWeight: 700,
+   854→   854→                            color: '#3A2410',
+   855→   855→                            lineHeight: 1.1,
+   856→   856→                            whiteSpace: 'nowrap',
+   857→   857→                            overflow: 'visible',
+   858→   858→                            textOverflow: 'clip',
+   859→   859→                          }}
+   860→   860→                        >
+   861→   861→                          {localizedCatName(cat)}
+   862→   862→                        </span>
+   863→   863→                        <span
+   864→   864→                          style={{
+   865→   865→                            fontSize: 8.5,
+   866→   866→                            color: '#5C3A1E',
+   867→   867→                            background: 'rgba(212, 168, 83, 0.35)',
+   868→   868→                            padding: '2px 5px',
+   869→   869→                            borderRadius: 5,
+   870→   870→                            fontWeight: 700,
+   871→   871→                            flexShrink: 0,
+   872→   872→                          }}
+   873→   873→                        >
+   874→   874→                          {cat.items.length}
+   875→   875→                        </span>
+   876→   876→                        <motion.div
+   877→   877→                          initial={{ opacity: 0, y: -4 }}
+   878→   878→                          animate={{ opacity: 1, y: 0 }}
+   879→   879→                          transition={{ delay: 0.08, duration: 0.18 }}
+   880→   880→                          style={{
+   881→   881→                            position: 'absolute',
+   882→   882→                            bottom: -12,
+   883→   883→                            left: '50%',
+   884→   884→                            transform: 'translateX(-50%)',
+   885→   885→                            fontSize: 8,
+   886→   886→                            color: '#5C3A1E',
+   887→   887→                            fontWeight: 600,
+   888→   888→                            whiteSpace: 'nowrap',
+   889→   889→                            background: 'rgba(255, 248, 231, 0.95)',
+   890→   890→                            padding: '2px 7px',
+   891→   891→                            borderRadius: 7,
+   892→   892→                            border: '1px solid rgba(212, 168, 83, 0.5)',
+   893→   893→                            boxShadow: '0 2px 6px rgba(60, 40, 10, 0.15)',
+   894→   894→                          }}
+   895→   895→                        >
+   896→   896→                          {t('tapToSelect')}
+   897→   897→                        </motion.div>
+   898→   898→                      </motion.div>
+   899→   899→                    )}
+   900→   900→                  </AnimatePresence>
+   901→   901→                </div>
+   902→   902→              )
+   903→   903→            })}
+   904→   904→          </div>
+   905→   905→        </div>
+   906→   906→      </motion.div>
+   907→   907→    </div>
+   908→   908→  )
+   909→   909→}
+   910→   910→
