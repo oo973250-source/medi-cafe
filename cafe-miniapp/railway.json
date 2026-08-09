@@ -1,9 +1,0 @@
-{
-  "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "npm run build",
-    "startCommand": "npm start",
-    "installCommand": "npm install",
-    "rootDir": "cafe-miniapp"
-  }
-}
